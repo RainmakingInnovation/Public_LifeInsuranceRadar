@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Prioritised Opportunity Space Startup Map</title>
+  <script src="https://d3js.org/d3.v4.min.js"></script>
+  <style type="text/css">
+    body {
+      display: grid;
+      grid-template-columns: 140px 800px;
+      grid-template-rows: 350px 275px;
+      grid-gap: 0.5em;
+      margin: auto;
+    }
+
+    #chart-container {
+      grid-column: 2 / span 1;
+      grid-row: 1 / span 2;
+      padding: 5px;
+    }
+
+    #key-container {
+      grid-column: 1 / span 1;
+      grid-row: 1 / span 1;
+      overflow: hidden;
+      padding: 30px;
+    }
+
+    #control-container {
+      grid-column: 1 / span 1;
+      grid-row: 2 / span 1;
+      overflow: hidden;
+      padding: 30px;
+    }
+
+    @font-face {
+      font-family: "Graphik Regular";
+      font-style: normal;
+      font-weight: normal;
+      src: local("Graphik Regular"), url("GraphikRegular.woff") format("woff");
+    }
+
+    @font-face {
+      font-family: "Graphik Bold";
+      font-style: normal;
+      font-weight: bold;
+      src: local("Graphik Bold"), url("GraphikBold.woff") format("woff");
+    }
+
+    .segment {
+      stroke: white;
+      stroke-width: 2px;
+    }
+
+    .existing-segments {
+      fill: #dfdfdf;
+    }
+
+    .emerging-segments {
+      fill: #e9e9e9;
+    }
+
+    .distant-segments {
+      fill: #f4f4f4;
+    }
+
+    .segment-band {
+      stroke: white;
+      stroke-width: 2px;
+    }
+
+    .label-text {
+      fill: white;
+      text-anchor: middle;
+      font-weight: bold;
+      font-size: 8px;
+      font-family: "Graphik Bold";
+    }
+
+    .funding-hover-info {
+      fill: black;
+      text-anchor: middle;
+      font-weight: bold;
+      font-size: 10px;
+      font-family: "Graphik Bold";
+      pointer-events: none;
+    }
+
+    .funding-hover-info.amount {
+      font-size: 12px;
+    }
+
+    .year-labels,
+    .maturity-labels {
+      fill: #8b8b8b;
+      text-anchor: middle;
+      font-size: 8px;
+      font-family: "Graphik Bold";
+    }
+
+    .nodes {
+      stroke: black;
+      stroke-width: 1px;
+    }
+
+    .wrap-header {
+      font-family: "Graphik Bold";
+      font-weight: bold;
+    }
+
+    #chart-container {
+      text-align: center;
+    }
+
+    .node-mouse-over-box {
+      pointer-events: none;
+    }
+
+    .node-mouse-over-text {
+      font-size: 10px;
+      text-anchor: start;
+      font-weight: bold;
+      fill: #404e4d;
+      font-family: "Graphik Regular";
+      pointer-events: none;
+      width: 100px;
+    }
+
+    .chart-title {
+      font-family: "Graphik Bold";
+      font-weight: bold;
+      text-anchor: middle;
+      font-size: 20px;
+    }
+
+    .key-label {
+      font-family: "Graphik Regular";
+      font-size: 8px;
+      cursor: pointer;
+    }
+
+    .key-item {
+      stroke: black;
+      stroke-width: 1px;
+      fill: white;
+      cursor: pointer;
+    }
+
+    .key-item-other {
+      stroke: black;
+      stroke-width: 1px;
+      cursor: pointer;
+    }
+
+    .key-title {
+      font-weight: bold;
+      font-family: "Graphik Bold";
+      font-size: 12px;
+    }
+
+    .segment-band {
+      cursor: pointer;
+    }
+
+    .switch-button:hover {
+      fill: #e74668;
+    }
+
+    .switch-button {
+      cursor: pointer;
+      color: #faf0e6;
+      padding: 10px;
+      font-family: "Graphik Regular";
+      font-size: 10px;
+      border: none;
+      cursor: pointer;
+      text-anchor: middle;
+      min-width: 100px;
+    }
+
+    .switch-button:hover {
+      background-color: #e74668;
+    }
+
+    .switch-button-label {
+      font-weight: bold;
+      font-family: "Graphik Regular";
+      font-size: 10px;
+      text-anchor: middle;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="chart-container"></div>
+  <div id="key-container"></div>
+  <div id="control-container">
+    <button class="switch-button" id="switch-button-maturity">
+      Maturity
+    </button>
+    <button class="switch-button" id="switch-button-year">Year</button>
+  </div>
+
+  <script>
+    var width = 800,
+      height = 780,
+      innerRadius = 50,
+      outerRadius = 300,
+      keySize = 10,
+      keySpacing = 8,
+      radial = "maturity",
+      animationDuration = 2000,
+      keyWidth = 140,
+      keyHeight = 525,
+      logoPath = "logo.png",
+      titleLogoWidth = 150,
+      titleLogoHeight = 50;
+
+    d3.select("#switch-button-maturity").style("background-color", "#3F88C6")
+      .on("mouseover", function () {
+        d3.select(this).style("background-color", "#78A7AF")
+      })
+      .on("mouseout", function () {
+        if (radial === 'maturity') {
+          d3.select(this).style("background-color", "#3F88C6")
+        } else {
+          d3.select(this).style("background-color", "#8e8e8e")
+        }
+      })
+
+    d3.select("#switch-button-year").style("background-color", "#8e8e8e")
+      .on("mouseover", function () {
+        d3.select(this).style("background-color", "#78A7AF")
+      })
+      .on("mouseout", function () {
+        if (radial === 'year') {
+          d3.select(this).style("background-color", "#3F88C6")
+        } else {
+          d3.select(this).style("background-color", "#8e8e8e")
+        }
+      })
+
+    var svg = d3
+      .select("#chart-container")
+      .append("svg")
+      .attr("width", width)
+      .attr("height", height)
+      .append("g")
+      .attr(
+        "transform",
+        "translate(" + width / 2 + "," + (height / 2 + 20) + ")"
+      );
+
+    var keySVG = d3
+      .select("#key-container")
+      .append("svg")
+      .attr("width", keyWidth)
+      .attr("height", keyHeight)
+      .append("g")
+      .attr(
+        "transform",
+        "translate(" + keyWidth / 2 + "," + keyHeight / 2 + ")"
+      );
+
+    var chartTitle = svg
+      .append("text")
+      .attr("class", "chart-title")
+      .text("Life Insurance Opportunity Space Startup Radar (Europe)")
+      .attr("y", (-height * 4.65) / 10)
+      .attr("x", 105);
+
+    var logoTitle = svg
+      .append("image")
+      .attr("xlink:href", logoPath)
+      .attr("width", titleLogoWidth)
+      .attr("height", titleLogoHeight)
+      .attr("y", (-height * 5.05) / 10)
+      .attr("x", -360);
+
+    d3.csv(
+      "https://docs.google.com/spreadsheets/d/e/2PACX-1vSafGm_gSEK_M6dTEcS3sd2N7CcehHPfg561BJtgzrHClIt5DH79yqHI1LpeOLbbwGob_Xi0kVUdxMB/pub?gid=293662889&single=true&output=csv",
+      function (data) {
+        // correct formatting of total funding values to numbers
+
+        data = data.filter(function(d) {
+          return d["Dai Ichi"] === ""
+        })
+
+        data.forEach(function (d) {
+          d["$ Total Funding "] = d["$ Total Funding "].replace(/,/g, "");
+          if (d["$ Total Funding "] === "") {
+            d["$ Total Funding "] = 0;
+          }
+          d["Opp space mapping 1"] = d["Opp space mapping 1"].toLowerCase();
+        });
+
+        var oppSpace_order = [
+          "end of life care",
+          "connected health",
+          "community engagement",
+          "non-invasive diagnostics",
+          "chronic disease management",
+          "growing wealth management",
+          "will & succession planning",
+          "smart agency"
+        ];
+
+        function oppSpaceSort(a, b) {
+          for (i = 0; i < oppSpace_order.length; i++) {
+            if (a === oppSpace_order[i]) {
+              var valA = i;
+            }
+            if (b === oppSpace_order[i]) {
+              var valB = i;
+            }
+          }
+          return valA < valB ? -1 : valA > valB ? 1 : valA >= valB ? 0 : NaN;
+        }
+
+        var oppSpaceBandColorScale = d3
+          .scaleOrdinal()
+          .domain(oppSpace_order)
+          .range([
+            "#3F88C6",
+            "#3F88C6",
+            "#3F88C6",
+            "#3F88C6",
+            "#3F88C6",
+            "#E49142",
+            "#E49142",
+            "#78A7AF"
+          ]);
+
+        var fundingCategoryDomain = [
+          "Undisclosed",
+          "Seed",
+          "Series A",
+          "Series B",
+          "Series C",
+          "Series D",
+          "Series E",
+          "Public"
+        ];
+
+        //var fundingCategoryRange = ["Unfunded", "Seed", "Series A+"];
+        var fundingCategoryRange = [
+          "Unfunded",
+          "Seed",
+          "Series A+",
+          "Series A+",
+          "Series A+",
+          "Series A+",
+          "Series A+",
+          "Series A+"
+        ];
+
+        var fundingCategoryRangeUnique = [...new Set(fundingCategoryRange)];
+
+        var fundingCategoryScale = d3
+          .scaleOrdinal()
+          .domain(fundingCategoryDomain)
+          .range(fundingCategoryRange);
+
+        /*
+        var colors = [
+          "#3E885B",
+          "#028090",
+          "#D33F49",
+          "#FFFD82",
+          "#8F839B",
+          "#4D7393",
+          "#5E8C61",
+          "#FF9B71"
+        ];
+          */
+
+        //var colors = ["#3E885B", "#028090", "#D33F49"];
+
+        var colors = ["#D75059", "#72A887", "#5EAEB8"];
+
+        var nodeColorScale = d3
+          .scaleOrdinal()
+          .domain(fundingCategoryRangeUnique)
+          .range(colors);
+
+        /* var oppSpaceBandScale = d3
+          .scaleOrdinal()
+          .domain(oppSpace_order)
+          .range(colors); */
+
+        var oppSpaceMappingSort = d3
+          .nest()
+          .key(function (d) {
+            return d["Opp space mapping 1"];
+          })
+          .sortKeys(oppSpaceSort)
+          .rollup(function (v) {
+            var totalFunding = d3.sum(v, function (d) {
+              return +d["$ Total Funding "];
+            });
+            return totalFunding;
+          })
+          .entries(data);
+
+        var count_by_maturity = d3
+          .nest()
+          .key(function (d) {
+            return d["Maturity"];
+          })
+          .rollup(function (v) {
+            return v.length;
+          })
+          .entries(data);
+
+        var count_by_funding_stage = d3
+          .nest()
+          .key(function (d) {
+            return d["Funding Stage"];
+          })
+          .rollup(function (v) {
+            return v.length;
+          })
+          .entries(data);
+
+        var count_by_year = d3
+          .nest()
+          .key(function (d) {
+            return d["Founding Year"];
+          })
+          .sortKeys(d3.ascending)
+          .rollup(function (v) {
+            return v.length;
+          })
+          .entries(data);
+
+        var yearList = [];
+        count_by_year.forEach(function (d, i) {
+          d.inner = 50 + (i * 250) / count_by_year.length;
+          d.outer = 50 + ((i + 1) * 250) / count_by_year.length;
+          yearList.push(d.key);
+        });
+
+        /* var fundingStage = [
+          "Unfunded",
+          "Seed",
+          "Series A",
+          "Series B",
+          "Series C",
+          "Series D",
+          "Series E",
+          "Public",
+          "Acquired"
+        ];
+
+        var nodeSizeScale = d3
+          .scaleOrdinal()
+          .domain(fundingStage)
+          .range([2, 2.75, 3.5, 4.25, 5, 5.2, 5.4, 5.6, 0]); */
+
+        var fundingAmount = ["$0-$10M", "$10-$20M", "$20M+"];
+
+        var nodeSizeScale = d3
+          .scaleOrdinal()
+          .domain(fundingAmount)
+          .range([2.6, 3.4, 4.2]);
+
+        function nodeSizeScaleFunction(funding) {
+          if (funding <= 10000000) {
+            return "$0-$10M";
+          }
+          if (funding > 10000000 && funding <= 20000000) {
+            return "$10-$20M";
+          }
+          if (funding > 20000000) {
+            return "$20M+";
+          }
+        }
+
+        var maturity_list = [
+          { name: "Existing", inner: 50, outer: 140 },
+          { name: "Emerging", inner: 140, outer: 220 },
+          { name: "Distant", inner: 220, outer: 300 }
+        ];
+
+        var existingArc = d3
+          .arc()
+          .innerRadius(maturity_list[0].inner)
+          .outerRadius(maturity_list[0].outer);
+
+        var emergingArc = d3
+          .arc()
+          .innerRadius(maturity_list[1].inner)
+          .outerRadius(maturity_list[1].outer);
+
+        var distantArc = d3
+          .arc()
+          .innerRadius(maturity_list[2].inner)
+          .outerRadius(maturity_list[2].outer);
+
+        var chartPie = d3
+          .pie()
+          .value(function (d) {
+            return d.value.value + 20000000000;
+          })
+          .sort(oppSpaceSort);
+
+        var chartPieData = chartPie(d3.entries(oppSpaceMappingSort));
+
+        var yearSegmentColorScale = d3
+          .scaleOrdinal()
+          .domain(yearList)
+          .range(["#f4f4f4"]);
+
+        /*         .range([
+            "#F6F6F6",
+            "#F0F0F0",
+            "#E8E8E8",
+            "#E0E0E0",
+            "#DADADA",
+            "#D2D2D2",
+            "#C9C9C9",
+            "#BDBDBD",
+            "#AFAFAF",
+            "#9E9E9E",
+            "#868686",
+            "#7A7A7A"
+          ]); */
+
+        maturity_list.forEach(function (v) {
+          var tmpArc = d3
+            .arc()
+            .innerRadius(v.inner)
+            .outerRadius(v.outer);
+
+          var tmpSegment = svg
+            .selectAll("existing-segments")
+            .data(chartPieData)
+            .enter()
+            .append("path")
+            .attr("class", "segment " + v.name.toLowerCase() + "-segments")
+            .attr("id", function (d) {
+              return (
+                v.name.toLowerCase() +
+                "-" +
+                d.data.value.key.replace(/ /g, "-").replace(/&/g, "and") +
+                "-segment"
+              );
+            })
+            .attr("d", tmpArc)
+            .attr("opacity", 1);
+        });
+
+        count_by_year.forEach(function (v) {
+          var tmpArc = d3
+            .arc()
+            .innerRadius(v.inner)
+            .outerRadius(v.outer);
+
+          var tmpSegment = svg
+            .selectAll("year-segment")
+            .data(chartPieData)
+            .enter()
+            .append("path")
+            .attr("class", "segment " + "year-" + v.key + "-segments")
+            .attr("id", function (d) {
+              return (
+                "year-" +
+                v.key +
+                "-" +
+                d.data.value.key.replace(/ /g, "-").replace(/&/g, "and") +
+                "-segment"
+              );
+            })
+            .attr("d", tmpArc)
+            .attr("opacity", 0)
+            .attr("fill", yearSegmentColorScale(v.key));
+        });
+
+        var numSegments = oppSpaceMappingSort.length;
+
+        var segmentArc = d3
+          .arc()
+          .innerRadius(innerRadius)
+          .outerRadius(outerRadius);
+
+        var segmentLabelArc = d3
+          .arc()
+          .innerRadius(outerRadius)
+          .outerRadius(outerRadius * 1.05);
+
+        var segmentLabelBandArc = d3
+          .arc()
+          .innerRadius(outerRadius)
+          .outerRadius(outerRadius * 1.095);
+
+        var segmentsLabelBand = svg
+          .selectAll("path.segment-band")
+          .data(chartPieData)
+          .enter()
+          .append("path")
+          .classed("segment-band", true)
+          .attr("d", segmentLabelBandArc)
+          .attr("id", function (d) {
+            return (
+              d.data.value.key.toLowerCase().replace(/ /g, "-") + "-band"
+            );
+          })
+          .attr("fill", function (d) {
+            return oppSpaceBandColorScale(d.data.value.key);
+          })
+          .on("mouseover", function (d) {
+            labelMouseOver(d);
+          })
+          .on("mouseout", labelMouseOut);
+
+        var labelRadius = outerRadius * 1.055;
+        var labelOtherRadius = outerRadius * 1.02;
+
+        var labels = svg.append("g").classed("labels", true);
+        var labelsOther = svg.append("g").classed("labels", true);
+
+        labels
+          .append("def")
+          .append("path")
+          .attr("id", "label-path")
+          .attr(
+            "d",
+            "m0 " +
+            -labelRadius +
+            " a" +
+            labelRadius +
+            " " +
+            labelRadius +
+            " 0 1,1 -0.01 0"
+          );
+
+        labelsOther
+          .append("def")
+          .append("path")
+          .attr("id", "label-other-path")
+          .attr(
+            "d",
+            "m0 " +
+            -labelOtherRadius +
+            " a" +
+            labelOtherRadius +
+            " " +
+            labelOtherRadius +
+            " 0 1,1 -0.01 0"
+          );
+
+        labels
+          .selectAll("text")
+          .data(chartPieData)
+          .enter()
+          .append("text")
+          .attr("class", "label-text")
+          .append("textPath")
+          .attr("xlink:href", "#label-path")
+          .attr("startOffset", function (d, i) {
+            var percentage =
+              ((d.endAngle - d.startAngle) / 2 + d.startAngle) / 0.0628319;
+            return percentage + "%";
+          })
+          .text(function (d) {
+            return label_wrap(d.data.value.key.toUpperCase())[0];
+          });
+
+        labelsOther
+          .selectAll("text")
+          .data(chartPieData)
+          .enter()
+          .append("text")
+          .attr("class", "label-text")
+          .append("textPath")
+          .attr("xlink:href", "#label-other-path")
+          .attr("startOffset", function (d, i) {
+            var percentage =
+              ((d.endAngle - d.startAngle) / 2 + d.startAngle) / 0.0628319;
+            return percentage + "%";
+          })
+          .text(function (d) {
+            var result = label_wrap(d.data.value.key.toUpperCase());
+            if (result.length > 2) {
+              return result[1] + " " + result[2];
+            } else {
+              return result[1];
+            }
+          });
+
+        var key = keySVG
+          .selectAll("g.key")
+          .data(fundingAmount)
+          .enter()
+          .append("g")
+          .attr("transform", function (d, i) {
+            var h = keySize + keySpacing;
+            var offset = 87;
+            var horz = -50;
+            var vert = i * h - offset;
+            return "translate(" + horz + "," + vert + ")";
+          });
+
+        key
+          .append("circle")
+          .classed("key-item", true)
+          .attr("r", function (d) {
+            return nodeSizeScale(d);
+          })
+          .on("mouseover", function (d) {
+            keyMouseOver(d, "size");
+          })
+          .on("mouseout", keyMouseOut);
+
+        key
+          .append("text")
+          .text(function (d) {
+            return d;
+          })
+          .classed("key-labels key-label", true)
+          .attr("dx", "2.4em")
+          .attr("dy", "0.25em")
+          .on("mouseover", function (d) {
+            keyMouseOver(d, "size");
+          })
+          .on("mouseout", keyMouseOut);
+
+        var keyOther = keySVG
+          .selectAll("g.key-other")
+          .data(fundingCategoryRangeUnique)
+          .enter()
+          .append("g")
+          .attr("transform", function (d, i) {
+            var h = keySize + keySpacing;
+            var offset = 73;
+            var horz = -50;
+            var vert = i * h - offset + 40;
+            return "translate(" + horz + "," + vert + ")";
+          });
+
+        var keyAcquired = keySVG
+          .append("g")
+          .attr("transform", "translate(-50,22)");
+
+        keyAcquired
+          .append("rect")
+          .classed("key-item-other", true)
+          .attr("width", 10.4)
+          .attr("height", 10.4)
+          .attr("fill", "#FFFD82")
+          .attr("x", 0)
+          .attr("y", 0)
+          .attr("transform", "translate(0, -9) rotate(45)")
+          .on("mouseover", function (d) {
+            keyMouseOver("Acquired", "acquired");
+          })
+          .on("mouseout", keyMouseOut);
+
+        keyAcquired
+          .append("text")
+          .text("Acquired")
+          .classed("key-labels key-label", true)
+          .attr("dx", "2.4em")
+          .attr("dy", "0.25em")
+          .on("mouseover", function () {
+            keyMouseOver("Acquired", "acquired");
+          })
+          .on("mouseout", keyMouseOut);
+
+        keyOther
+          .append("circle")
+          .classed("key-item-other", true)
+          .attr("r", 4.4)
+          .attr("fill", function (d) {
+            return nodeColorScale(d);
+          })
+          .on("mouseover", function (d) {
+            keyMouseOver(d, "color");
+          })
+          .on("mouseout", keyMouseOut);
+
+        keyOther
+          .append("text")
+          .text(function (d) {
+            return d;
+          })
+          .classed("key-labels key-label", true)
+          .attr("dx", "2.4em")
+          .attr("dy", "0.25em")
+          .on("mouseover", function (d) {
+            keyMouseOver(d, "color");
+          })
+          .on("mouseout", keyMouseOut);
+
+
+
+        /* var keyDaiIchi = keySVG
+          .append("g")
+          .attr("transform", "translate(-45,40)");
+
+        keyDaiIchi
+          .append("text")
+          .text("Dai-Ichi Initiatives")
+          .classed("key-labels key-label", true)
+          .attr("dx", "1.8em")
+          .attr("dy", "0.25em")
+          .on("mouseover", function () {
+            keyMouseOver("", "dai-ichi");
+          })
+          .on("mouseout", keyMouseOut);
+
+        keyDaiIchi
+          .append("image")
+          .classed("key-item-other", true)
+          .attr("xlink:href", logoPath)
+          .attr("width", 50)
+          .attr("height", 10)
+          .attr("fill", "#FFFD82")
+          .attr("x", -30)
+          .attr("y", -5)
+          .on("mouseover", function (d) {
+            keyMouseOver("", "dai-ichi");
+          })
+          .on("mouseout", keyMouseOut); */
+
+        var keyTitle = keySVG
+          .append("text")
+          .attr("class", "key-title")
+          .text("Legend:")
+          .attr("y", function () {
+            return key.node().transform.animVal.getItem(0).matrix.f - 16;
+          })
+          .attr("x", -55);
+
+        var existingLabelRadius = maturity_list[0].outer - 15;
+        var emergingLabelRadius = maturity_list[1].outer - 15;
+        var distantLabelRadius = maturity_list[2].outer - 15;
+
+        var existingLabel = svg.append("g").classed("maturity-labels", true);
+
+        existingLabel
+          .append("def")
+          .append("path")
+          .attr("id", "existing-label-path")
+          .attr(
+            "d",
+            "m " +
+            -existingLabelRadius +
+            " 0 a 50 50 0 1 1 " +
+            2 * existingLabelRadius +
+            " 0"
+          );
+
+        existingLabel
+          .append("text")
+          .attr("class", "maturity-label-text")
+          .attr("id", "existing-label-path-text")
+          .append("textPath")
+          .attr("xlink:href", "#existing-label-path")
+          .attr("startOffset", "50%")
+          .text("Existing");
+
+        var emergingLabel = svg.append("g").classed("maturity-labels", true);
+
+        emergingLabel
+          .append("def")
+          .append("path")
+          .attr("id", "emerging-label-path")
+          .attr(
+            "d",
+            "m " +
+            -emergingLabelRadius +
+            " 0 a 50 50 0 1 1 " +
+            2 * emergingLabelRadius +
+            " 0"
+          );
+
+        emergingLabel
+          .append("text")
+          .attr("class", "maturity-label-text")
+          .attr("id", "emerging-label-path-text")
+          .append("textPath")
+          .attr("xlink:href", "#emerging-label-path")
+          .attr("startOffset", "50%")
+          .text("Emerging");
+
+        count_by_year.forEach(function (d, i) {
+          this["year" + d.key + "LabelRadius"] = d.outer - 10;
+          this["year" + d.key + "Label"] = svg
+            .append("g")
+            .classed("year-labels", true);
+
+          this["year" + d.key + "Label"]
+            .append("def")
+            .append("path")
+            .attr("id", "year-" + d.key + "-label-path")
+            .attr(
+              "d",
+              "m " +
+              -this["year" + d.key + "LabelRadius"] +
+              " 0 a 50 50 0 1 1 " +
+              2 * this["year" + d.key + "LabelRadius"] +
+              " 0"
+            );
+          d.fn = this["year" + d.key + "Label"];
+        });
+
+        var distantLabel = svg.append("g").classed("maturity-labels", true);
+
+        distantLabel
+          .append("def")
+          .append("path")
+          .attr("id", "distant-label-path")
+          .attr(
+            "d",
+            "m " +
+            -distantLabelRadius +
+            " 0 a 50 50 0 1 1 " +
+            2 * distantLabelRadius +
+            " 0"
+          );
+
+        distantLabel
+          .append("text")
+          .attr("class", "maturity-label-text")
+          .attr("id", "distant-label-path-text")
+          .append("textPath")
+          .attr("xlink:href", "#distant-label-path")
+          .attr("startOffset", "50%")
+          .text("Distant");
+
+        maturity_list_elements = [
+          { name: "Existing", fn: existingLabel },
+          { name: "Emerging", fn: emergingLabel },
+          { name: "Distant", fn: distantLabel }
+        ];
+
+        var nodeData = d3
+          .nest()
+          .key(function (d) {
+            return d["Opp space mapping 1"];
+          })
+          .key(function (d) {
+            return d["Maturity"];
+          })
+          .rollup(function (v) {
+            return v.length;
+          })
+          .entries(data);
+
+        var nodeSecondData = d3
+          .nest()
+          .key(function (d) {
+            return d["Opp space mapping 1"];
+          })
+          .key(function (d) {
+            return d["Founding Year"];
+          })
+          .rollup(function (v) {
+            return v.length;
+          })
+          .entries(data);
+
+        var nodeList = [];
+        data.forEach(function (d) {
+          //console.log(d);
+          for (i = 0; i < chartPieData.length; i++) {
+            if (d["Opp space mapping 1"] === chartPieData[i].data.value.key) {
+              var tmp_startAngleMin = chartPieData[i].startAngle + 0.02;
+              var tmp_endAngleMax = chartPieData[i].endAngle - 0.02;
+              break;
+            }
+          }
+          for (i = 0; i < maturity_list.length; i++) {
+            if (d["Maturity"] === maturity_list[i]["name"]) {
+              //console.log('InnerRadius:', maturity_list[i]['inner'])
+              //console.log('OuterRadius:', maturity_list[i]['outer'])
+              tmp_innerRadiusMin = maturity_list[i]["inner"] + 2.5;
+              tmp_outerRadiusMax = maturity_list[i]["outer"] - 5;
+              break;
+            }
+          }
+
+          for (i = 0; i < nodeData.length; i++) {
+            if (nodeData[i].key === d["Opp space mapping 1"]) {
+              for (j = 0; j < nodeData[i].values.length; j++) {
+                if (nodeData[i].values[j].key === d["Maturity"]) {
+                  var results = assignRandom(
+                    tmp_startAngleMin,
+                    tmp_endAngleMax,
+                    tmp_innerRadiusMin,
+                    tmp_outerRadiusMax,
+                    nodeList
+                  );
+                }
+              }
+            }
+          }
+
+          d.x = results[0];
+          d.y = results[1];
+          d.opacity = 1;
+          d.radius = 3;
+        });
+
+        var nodeSecondList = [];
+        data.forEach(function (d) {
+          for (i = 0; i < chartPieData.length; i++) {
+            if (d["Opp space mapping 1"] === chartPieData[i].data.value.key) {
+              var tmp_startAngleMin = chartPieData[i].startAngle + 0.04;
+              var tmp_endAngleMax = chartPieData[i].endAngle - 0.04;
+              break;
+            }
+          }
+          for (i = 0; i < count_by_year.length; i++) {
+            if (d["Founding Year"] === count_by_year[i].key) {
+              //console.log('InnerRadius:', count_by_year[i]['inner'])
+              //console.log('OuterRadius:', count_by_year[i]['outer'])
+              tmp_innerRadiusMin = count_by_year[i]["inner"] + 6;
+              tmp_outerRadiusMax = count_by_year[i]["outer"] - 6;
+              break;
+            }
+          }
+
+          for (i = 0; i < nodeSecondData.length; i++) {
+            if (nodeSecondData[i].key === d["Opp space mapping 1"]) {
+              for (j = 0; j < nodeSecondData[i].values.length; j++) {
+                if (nodeSecondData[i].values[j].key === d["Founding Year"]) {
+                  var results = assignRandom(
+                    tmp_startAngleMin,
+                    tmp_endAngleMax,
+                    tmp_innerRadiusMin,
+                    tmp_outerRadiusMax,
+                    nodeSecondList
+                  );
+                }
+              }
+            }
+          }
+          d.yearX = results[0];
+          d.yearY = results[1];
+        });
+
+        d3.select("#switch-button-maturity").on("click", function () {
+          if (radial !== "maturity") {
+            switchRadial();
+            d3.select(this).attr("background-color", "#e74668")
+          }
+        });
+
+        d3.select("#switch-button-year").on("click", function () {
+          if (radial !== "year") {
+            switchRadial();
+            d3.select(this).attr("background-color", "#e74668")
+          }
+        });
+
+        console.log(data);
+
+        var nodes = svg
+          .selectAll("nodes")
+          .data(data)
+          .enter()
+          .append("a")
+          .attr("xlink:href", function (d) {
+            return d.URL;
+          })
+          .attr("target", "_blank")
+          .append("circle")
+          .attr("class", "nodes")
+          .attr("r", function (d) {
+            if (d["Funding Stage"] !== "Acquired" && d["Dai Ichi"] === "") {
+              return nodeSizeScale(
+                nodeSizeScaleFunction(d["$ Total Funding "])
+              );
+            }
+          })
+          .attr("cx", function (d) {
+            return d.x;
+          })
+          .attr("cy", function (d) {
+            return d.y;
+          })
+          .attr("fill", function (d) {
+            return nodeColorScale(fundingCategoryScale(d["Funding Stage"]));
+          })
+          .on("mouseover", function (d) {
+            nodeMouseOver(d);
+          })
+          .on("mouseout", nodeMouseOut);
+
+        /* var nodes_Dai_Ichi = svg
+          .selectAll("title-image")
+          .data(data)
+          .enter()
+          .append("a")
+          .attr("xlink:href", function (d) {
+            return d.URL;
+          })
+          .attr("target", "_blank")
+          .append("image")
+          .attr("xlink:href", logoPath)
+          .attr("width", function (d) {
+            if (d["Dai Ichi"] === "") {
+              return 0;
+            } else {
+              return 50;
+            }
+          })
+          .attr("height", 10)
+          .attr("x", function (d) {
+            return d.x - 25;
+          })
+          .attr("y", function (d) {
+            return d.y - 5;
+          })
+          .on("mouseover", function (d) {
+            console.log(d)
+            nodeMouseOver(d);
+          })
+          .on("mouseout", nodeMouseOut); */
+
+        var nodes_acquired = svg
+          .selectAll("nodes-acquired")
+          .data(data)
+          .enter()
+          .append("a")
+          .attr("xlink:href", function (d) {
+            return d.URL;
+          })
+          .attr("target", "_blank")
+          .append("rect")
+          .attr("class", "nodes nodes-acquired")
+          .attr("id", function (d) {
+            return d["Startup"].toLowerCase().replace(/ /g, "-");
+          })
+          .attr("width", function (d) {
+            if (d["Funding Stage"] === "Acquired" && d["Dai Ichi"] === "") {
+              return 10.4;
+            } else {
+              return 0;
+            }
+          })
+          .attr("height", function (d) {
+            if (d["Funding Stage"] === "Acquired" && d["Dai Ichi"] === "") {
+              return 10.4;
+            } else {
+              return 0;
+            }
+          })
+          .attr("x", 0)
+          .attr("y", 0)
+          .attr("fill", "#FFFD82")
+          .attr("transform", function (d) {
+            return "translate(" + d.x + "," + d.y + ")    rotate(45)";
+          })
+          .on("mouseover", function (d) {
+            nodeMouseOver(d);
+          })
+          .on("mouseout", nodeMouseOut);
+
+        /* function keyMouseOver(data, type) {
+          nodes.attr("opacity", function(d) {
+            if (nodeSizeScaleFunction(d["$ Total Funding "]) === data) {
+              return 1;
+            } else {
+              return 0.3;
+            }
+          });
+          nodes_acquired.attr("opacity", 0.3);
+        } */
+
+        function switchRadial() {
+          if (radial === "maturity") {
+            radial = "year";
+
+            d3.select("#switch-button-maturity").style("background-color", "#8e8e8e")
+
+            nodes
+              .transition()
+              .duration(animationDuration)
+              .attrTween("cx", function (d) {
+                var i = d3.interpolate(d.x, d.yearX);
+                return function (t) {
+                  return i(t);
+                };
+              })
+              .attrTween("cy", function (d) {
+                var i = d3.interpolate(d.y, d.yearY);
+                return function (t) {
+                  return i(t);
+                };
+              });
+
+            /* nodes_Dai_Ichi
+              .transition()
+              .duration(animationDuration)
+              .attrTween("x", function (d) {
+                var i = d3.interpolate(d.x - 25, d.yearX - 25);
+                return function (t) {
+                  return i(t);
+                };
+              })
+              .attrTween("y", function (d) {
+                var i = d3.interpolate(d.y - 5, d.yearY - 5);
+                return function (t) {
+                  return i(t);
+                };
+              }); */
+
+            nodes_acquired
+              .transition()
+              .duration(animationDuration)
+              .attrTween("transform", function (d) {
+                var i = d3.interpolate(d.x, d.yearX);
+                var j = d3.interpolate(d.y, d.yearY);
+                return function (t) {
+                  return "translate(" + i(t) + "," + j(t) + ")    rotate(45)";
+                };
+              });
+
+            maturity_list.forEach(function (d) {
+              var id = "#" + d.name.toLowerCase() + "-label-path-text";
+              d3.select(id).remove();
+            });
+
+            count_by_year.forEach(function (d) {
+              d.fn
+                .append("text")
+                .attr("class", "year-label-text")
+                .attr("id", "year-" + d.key + "-label-path-text")
+                .append("textPath")
+                .attr("xlink:href", "#year-" + d.key + "-label-path")
+                .attr("startOffset", "50%")
+                .text(d.key);
+
+              chartPieData.forEach(function (v) {
+                d3.select(
+                  "#year-" +
+                  d.key +
+                  "-" +
+                  v.data.value.key.replace(/ /g, "-").replace(/&/g, "and") +
+                  "-segment"
+                ).attr("opacity", 1);
+              });
+            });
+          } else {
+            radial = "maturity";
+
+            d3.select("#switch-button-year").style("background-color", "#8e8e8e")
+
+            nodes
+              .transition()
+              .duration(animationDuration)
+              .attrTween("cx", function (d) {
+                var i = d3.interpolate(d.yearX, d.x);
+                return function (t) {
+                  return i(t);
+                };
+              })
+              .attrTween("cy", function (d) {
+                var i = d3.interpolate(d.yearY, d.y);
+                return function (t) {
+                  return i(t);
+                };
+              });
+
+            /* nodes_Dai_Ichi
+              .transition()
+              .duration(animationDuration)
+              .attrTween("x", function (d) {
+                var i = d3.interpolate(d.yearX - 25, d.x - 25);
+                return function (t) {
+                  return i(t);
+                };
+              })
+              .attrTween("y", function (d) {
+                var i = d3.interpolate(d.yearY - 5, d.y - 5);
+                return function (t) {
+                  return i(t);
+                };
+              }); */
+
+            nodes_acquired
+              .transition()
+              .duration(animationDuration)
+              .attrTween("transform", function (d) {
+                var i = d3.interpolate(d.yearX, d.x);
+                var j = d3.interpolate(d.yearY, d.y);
+                return function (t) {
+                  return "translate(" + i(t) + "," + j(t) + ") rotate(45)";
+                };
+              });
+
+            count_by_year.forEach(function (d) {
+              var id = "#year-" + d.key + "-label-path-text";
+              d3.select(id).remove();
+              chartPieData.forEach(function (v) {
+                d3.select(
+                  "#year-" +
+                  d.key +
+                  "-" +
+                  v.data.value.key.replace(/ /g, "-").replace(/&/g, "and") +
+                  "-segment"
+                ).attr("opacity", 0);
+              });
+            });
+
+            maturity_list_elements.forEach(function (d, i) {
+              d.fn
+                .append("text")
+                .attr("class", "maturity-label-text")
+                .attr("id", d.name.toLowerCase() + "-label-path-text")
+                .append("textPath")
+                .attr(
+                  "xlink:href",
+                  "#" + d.name.toLowerCase() + "-label-path"
+                )
+                .attr("startOffset", "50%")
+                .text(d.name)
+                .on("click", function () {
+                  switchRadial();
+                });
+            });
+          }
+        }
+
+        function labelMouseOver(data) {
+          svg
+            .append("text")
+            .attr("id", "label-mouse-over-text")
+            .html(function () {
+              var x = 0;
+              line1 =
+                "<tspan x=" +
+                x +
+                " dy='-0.3em' class='funding-hover-info'>Total Funding:</tspan>";
+              line2 =
+                "<tspan x=" +
+                x +
+                " dy='1.1em' class='funding-hover-info amount'>$" +
+                formatFunding(data.value - 20000000000) +
+                "</tspan>";
+              return line1 + line2;
+            });
+          segmentsLabelBand.attr("opacity", function (d) {
+            if (d.data.key === data.data.key) {
+              return 1;
+            } else {
+              return 0.3;
+            }
+          });
+        }
+
+        function labelMouseOut() {
+          d3.select("#label-mouse-over-text").remove();
+          segmentsLabelBand.attr("opacity", 1);
+        }
+
+        function keyMouseOver(data, type) {
+          if (type === "acquired") {
+            nodes_acquired.attr("opacity", 1);
+            nodes.attr("opacity", 0.3);
+            //nodes_Dai_Ichi.attr("opacity", 0.3);
+          }
+          if (type === "size") {
+            nodes.attr("opacity", function (d) {
+              if (nodeSizeScaleFunction(d["$ Total Funding "]) === data) {
+                return 1;
+              } else {
+                return 0.3;
+              }
+            });
+            /* nodes_Dai_Ichi.attr("opacity", function (d) {
+              if (nodeSizeScaleFunction(d["$ Total Funding "]) === data) {
+                return 1;
+              } else {
+                return 0.3;
+              }
+            }); */
+            nodes_acquired.attr("opacity", 0.3);
+          }
+          if (type === "color") {
+            nodes.attr("opacity", function (d) {
+              if (fundingCategoryScale(d["Funding Stage"]) === data) {
+                return 1;
+              } else {
+                return 0.3;
+              }
+            });
+            /* nodes_Dai_Ichi.attr("opacity", function (d) {
+              if (fundingCategoryScale(d["Funding Stage"]) === data) {
+                return 1;
+              } else {
+                return 0.3;
+              }
+            }); */
+            nodes_acquired.attr("opacity", 0.3);
+          }
+          if (type === "dai-ichi") {
+            nodes.attr("opacity", 0.3)
+            nodes_acquired.attr("opacity", 0.3);
+          }
+        }
+
+        function keyMouseOut() {
+          nodes.attr("opacity", function (d) {
+            return d.opacity;
+          });
+          nodes_acquired.attr("opacity", 1);
+          //nodes_Dai_Ichi.attr("opacity", 1);
+        }
+
+        function nodeMouseOver(data) {
+          if (radial === "maturity") {
+            var nodeX = data.x;
+            var nodeY = data.y;
+          } else {
+            var nodeX = data.yearX;
+            var nodeY = data.yearY;
+          }
+
+          var dummyHoverText = svg
+            .append("text")
+            .attr("id", "node-mouse-over-dummy-text")
+            .attr("class", "node-mouse-over-text")
+            .attr("x", function () {
+              return nodeX;
+            })
+            .attr("y", function () {
+              return nodeY;
+            })
+            .attr("dy", function () {
+              return "-0.75em";
+            })
+            .attr("fill-opacity", 0)
+            .html(function () {
+              var x = d3.select(this).attr("x");
+              return hover_info(data, x)
+            });
+
+          var toolBox = svg
+            .append("rect")
+            .attr("id", "node-mouse-over-box")
+            .attr("x", function () {
+              var x =
+                nodeX -
+                dummyHoverText.node().getBoundingClientRect().width / 2 -
+                8;
+              if (x < -400) {
+                return -400;
+              } else {
+                return x;
+              }
+            })
+            .attr("y", function () {
+              return (
+                nodeY -
+                dummyHoverText.node().getBoundingClientRect().height -
+                26
+              );
+            })
+            .attr("width", function () {
+              return dummyHoverText.node().getBoundingClientRect().width + 16;
+            })
+            .attr(
+              "height",
+              dummyHoverText.node().getBoundingClientRect().height + 22
+            )
+            .style("fill", "white")
+            .attr("fill-opacity", 0.9);
+
+          var hoverText = svg
+            .append("text")
+            .attr("id", "node-mouse-over-actual-text")
+            .attr("class", "node-mouse-over-text")
+            .attr("x", function () {
+              var x =
+                nodeX -
+                dummyHoverText.node().getBoundingClientRect().width / 2;
+              if (x < -400) {
+                return -392;
+              } else {
+                return x;
+              }
+            })
+            .attr("y", function () {
+              return (
+                nodeY -
+                dummyHoverText.node().getBoundingClientRect().height -
+                10
+              );
+            })
+            .attr("dy", function () {
+              return "-0.75em";
+            })
+            .attr("fill-opacity", 1)
+            .html(function () {
+              var x = d3.select(this).attr("x");
+              return hover_info(data, x);
+            });
+
+          nodes.attr("opacity", function (d) {
+            if (d["Funding Stage"] === data["Funding Stage"]) {
+              return 1;
+            } else {
+              return 0.3;
+            }
+          });
+          /* nodes_Dai_Ichi.attr("opacity", function (d) {
+            if (d["Funding Stage"] === data["Funding Stage"]) {
+              return 1;
+            } else {
+              return 0.3;
+            }
+          }); */
+          if (data["Funding Stage"] === "Acquired") {
+            nodes_acquired.attr("opacity", 1);
+          } else {
+            nodes_acquired.attr("opacity", 0.3);
+          }
+        }
+
+        function nodeMouseOut() {
+          d3.select("#node-mouse-over-dummy-text").remove();
+          d3.select("#node-mouse-over-box").remove();
+          d3.select("#node-mouse-over-actual-text").remove();
+
+          nodes.attr("opacity", function (d) {
+            return d.opacity;
+          });
+          nodes_acquired.attr("opacity", 1);
+          //nodes_Dai_Ichi.attr("opacity", 1);
+        }
+      }
+    );
+
+    function round_to_precision(x, precision) {
+      var y = +x + (precision === undefined ? 0.5 : precision / 2);
+      return y - (y % (precision === undefined ? 1 : +precision));
+    }
+
+    function formatFunding(total_funding) {
+      fundingFormatted = total_funding;
+      if (total_funding <= 900000 && total_funding > 1000) {
+        fundingFormatted = Math.round(total_funding / 10) / 100 + "K";
+      }
+      if (total_funding > 900000) {
+        fundingFormatted = Math.round(total_funding / 10000) / 100 + "M";
+      }
+      return fundingFormatted;
+    }
+
+    function hover_info(
+      data,
+      x,
+      limit = 35
+    ) {
+      var text_data = data["Business Description"]
+      var text_title = data["Startup"]
+      var funding_year = data["Founding Year"]
+      var acquried = data["Acquired"]
+      var total_funding = data["$ Total Funding "]
+      var dai_ichi = data["Dai Ichi"]
+
+      fundingFormatted = formatFunding(total_funding);
+
+      if (acquried === "") {
+        acquriedLine = "";
+      } else {
+        acquriedLine =
+          "<tspan x=" +
+          x +
+          " dy='1.1em' class='wrap-year'>Acquired: " +
+          acquried +
+          "</tspan>";
+      }
+      if (dai_ichi === "Yes") {
+        fundingLine = ""
+      } else {
+        fundingLine = "<tspan x=" +
+          x +
+          " dy='1.1em' class='wrap-year'>Total Funding: $" +
+          fundingFormatted +
+          "</tspan>"
+      }
+      words = text_data.split(/\s+/);
+      //console.log(words_alt);
+      lines = [];
+      current_seq_len = 0;
+      current_seq = [];
+      result =
+        "<tspan x=" +
+        x +
+        " dy='0em' class='wrap-header'>" +
+        text_title +
+        "</tspan>" +
+        "<tspan x=" +
+        x +
+        " dy='1.1em' class='wrap-year'>Year: " +
+        funding_year +
+        "</tspan>" +
+        fundingLine +
+        acquriedLine;
+      for (i = 0; i < words.length; i++) {
+        current_seq_len += words[i].length;
+        current_seq.push(words[i].replace(/�۪/g, "'"));
+        if (current_seq_len > limit) {
+          lines.push(current_seq);
+          current_seq_len = 0;
+          current_seq = [];
+        }
+      }
+      lines.push(current_seq);
+      for (i = 0; i < lines.length; i++) {
+        tmp = "";
+        for (j = 0; j < lines[i].length; j++) {
+          if (j !== lines[i].length - 1) {
+            tmp += lines[i][j] + " ";
+          } else {
+            tmp += lines[i][j];
+          }
+        }
+        result += "<tspan x=" + x + " dy='1.1em'>" + tmp + "</tspan>";
+      }
+      return result;
+    }
+
+    function label_wrap(text_data, limit = 7) {
+      words = text_data.split(/\s+/);
+      //console.log(words_alt);
+      lines = [];
+      current_seq_len = 0;
+      current_seq = [];
+      result = [];
+      for (i = 0; i < words.length; i++) {
+        current_seq_len += words[i].length;
+        current_seq.push(words[i].replace(/�۪/g, "'"));
+        if (current_seq_len > limit) {
+          lines.push(current_seq);
+          current_seq_len = 0;
+          current_seq = [];
+        }
+      }
+      lines.push(current_seq);
+      for (i = 0; i < lines.length; i++) {
+        tmp = "";
+        for (j = 0; j < lines[i].length; j++) {
+          if (j !== lines[i].length - 1) {
+            tmp += lines[i][j] + " ";
+          } else {
+            tmp += lines[i][j];
+          }
+        }
+        var dx = -tmp.length + "em";
+        result.push(tmp);
+      }
+      return result;
+    }
+
+    function assignRandom(
+      tmp_startAngleMin,
+      tmp_endAngleMax,
+      tmp_innerRadiusMin,
+      tmp_outerRadiusMax,
+      nodeList
+    ) {
+      tmp_startAngle =
+        Math.random() * (tmp_endAngleMax - tmp_startAngleMin) +
+        tmp_startAngleMin;
+      tmp_endAngle =
+        Math.random() * (tmp_endAngleMax - tmp_startAngle) + tmp_startAngle;
+      tmp_innerRadius =
+        Math.random() * (tmp_outerRadiusMax - tmp_innerRadiusMin) +
+        tmp_innerRadiusMin;
+      tmp_outerRadius =
+        Math.random() * (tmp_outerRadiusMax - tmp_innerRadius) +
+        tmp_innerRadius;
+      tmp_gen = d3
+        .arc()
+        .innerRadius(tmp_innerRadius)
+        .outerRadius(tmp_outerRadius)
+        .startAngle(tmp_startAngle)
+        .endAngle(tmp_endAngle);
+
+      tmp_x = tmp_gen.centroid()[0];
+      tmp_y = tmp_gen.centroid()[1];
+
+      if (nodeList.length !== 0) {
+        var distanceCheck = 0;
+        for (l = 0; l < nodeList.length; l++) {
+          distance = Math.sqrt(
+            Math.pow(nodeList[l][0] - tmp_x, 2) +
+            Math.pow(nodeList[l][1] - tmp_y, 2)
+          );
+          if (distance <= 15) {
+            distanceCheck = 1;
+          }
+        }
+        if (distanceCheck === 1) {
+          return assignRandom(
+            tmp_startAngleMin,
+            tmp_endAngleMax,
+            tmp_innerRadiusMin,
+            tmp_outerRadiusMax,
+            nodeList
+          );
+        } else {
+          nodeList.push([tmp_x, tmp_y]);
+          return [tmp_x, tmp_y];
+        }
+      } else {
+        nodeList.push([tmp_x, tmp_y]);
+        return [tmp_x, tmp_y];
+      }
+    }
+  </script>
+</body>
+
+</html>
